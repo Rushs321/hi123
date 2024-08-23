@@ -3,38 +3,29 @@ const redirectFunc = require('./redirect');
 
 async function compressImg(request, reply, imgStream) {
     const imgFormat = request.params.webp ? 'webp' : 'jpeg';
-    const grayscale = request.params.grayscale;
+    const grayscale = Boolean(request.params.grayscale);
     const quality = request.params.quality;
     const originSize = request.params.originSize;
 
     try {
         // Create a Sharp instance that processes the stream
-        const sharpStream = imgProc()
+        const { data, info } = await imgProc(imgStream)
             .grayscale(grayscale)
             .toFormat(imgFormat, {
                 quality,
                 progressive: true,
                 optimizeScans: true,
                 chromaSubsampling: '4:4:4',
-            });
+            })
+            .toBuffer({ resolveWithObject: true });
 
-        // Pipe the input stream through Sharp
-        const outputBuffer = await new Promise((resolve, reject) => {
-            const buffers = [];
-            imgStream.pipe(sharpStream)
-                .on('data', chunk => buffers.push(chunk))
-                .on('end', () => resolve(Buffer.concat(buffers)))
-                .on('error', reject);
-        });
-
-        // Get the output buffer's size
-        const outputSize = outputBuffer.length;
-
-        reply.header('content-type', `image/${imgFormat}`);
-        reply.header('content-length', outputSize);
-        reply.header('x-original-size', originSize);
-        reply.header('x-bytes-saved', originSize - outputSize);
-        return reply.code(200).send(outputBuffer);
+        reply
+            .header('content-type', `image/${imgFormat}`)
+            .header('content-length', info.size)
+            .header('x-original-size', originSize)
+            .header('x-bytes-saved', originSize - info.size)
+            .code(200)
+            .send(data);
     } catch (error) {
         return redirectFunc(request, reply);
     }
