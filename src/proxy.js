@@ -1,5 +1,3 @@
-// ./src/proxy.js
-
 const fetch = require('node-fetch');
 const pick = require('lodash').pick; // Directly import the pick function
 const { generateRandomIP, randomUserAgent } = require('./utils');
@@ -67,17 +65,18 @@ async function processRequest(request, reply) {
             return handleRedirect(request, reply);
         }
 
-        const buffer = await response.buffer();
-
         copyHdrs(response, reply);
         reply.header('content-encoding', 'identity');
         request.params.originType = response.headers.get('content-type') || '';
-        request.params.originSize = buffer.length;
+        request.params.originSize = parseInt(response.headers.get('content-length'), 10) || 0;
 
         if (checkCompression(request)) {
+            const buffer = await response.buffer();
             return applyCompression(request, reply, buffer);
         } else {
-            return performBypass(request, reply, buffer);
+            // Directly pipe the response stream to the client
+            reply.header('content-length', request.params.originSize);
+            return response.body.pipe(reply.raw);
         }
     } catch (err) {
         return handleRedirect(request, reply);
