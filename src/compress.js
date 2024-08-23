@@ -1,34 +1,31 @@
-const imgProc = require('sharp');
-const redirectFunc = require('./redirect');
+const sharp = require('sharp');
+const redirect = require('./redirect');
 
-async function compressImg(request, reply, imgStream) {
-    const imgFormat = request.params.webp ? 'webp' : 'jpeg';
-    const grayscale = Boolean(request.params.grayscale);
-    const quality = request.params.quality;
-    const originSize = request.params.originSize;
+async function compressImg(req, res, inputStream) {
+    const format = req.params.webp ? 'webp' : 'jpeg';
 
-    try {
-        // Create a Sharp instance that processes the stream
-        const { data, info } = await imgProc(imgStream)
-            .grayscale(grayscale)
-            .toFormat(imgFormat, {
-                quality,
+    // Set up the sharp instance with the desired options
+    inputStream.pipe(
+        sharp()
+            .grayscale(req.params.grayscale)
+            .toFormat(format, {
+                quality: req.params.quality,
                 progressive: true,
-                optimizeScans: true,
-                chromaSubsampling: '4:4:4',
+                optimizeScans: true
             })
-            .toBuffer({ resolveWithObject: true });
+            .toBuffer((err, output, info) => {
+                if (err || !info || res.headersSent) {
+                    return redirect(req, res);
+                }
 
-        reply
-            .header('content-type', `image/${imgFormat}`)
-            .header('content-length', info.size)
-            .header('x-original-size', originSize)
-            .header('x-bytes-saved', originSize - info.size)
-            .code(200)
-            .send(data);
-    } catch (error) {
-        return redirectFunc(request, reply);
-    }
+                // Send the processed image
+                res.header('content-type', `image/${format}`);
+                res.header('content-length', info.size);
+                res.header('x-original-size', req.params.originSize);
+                res.header('x-bytes-saved', req.params.originSize - info.size);
+                res.status(200).send(output);
+            })
+    );
 }
 
 module.exports = compressImg;
