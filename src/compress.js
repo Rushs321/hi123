@@ -3,9 +3,9 @@ const redirectFunc = require('./redirect');
 
 async function compressImg(request, reply, imgStream) {
     const imgFormat = request.params.webp ? 'webp' : 'jpeg';
-    const grayscale = Boolean(request.params.grayscale);
-    const quality = parseInt(request.params.quality, 10) || 75; // Default quality to 75 if not provided
-    const originSize = parseInt(request.params.originSize, 10) || 0; // Default to 0 if not provided
+    const grayscale = request.params.grayscale;
+    const quality = request.params.quality;
+    const originSize = request.params.originSize;
 
     try {
         // Create a Sharp instance that processes the stream
