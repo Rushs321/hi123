@@ -71,18 +71,19 @@ async function processRequest(request, reply) {
         request.params.originSize = parseInt(response.headers.get('content-length'), 10) || 0;
 
         if (checkCompression(request)) {
-            const buffer = await response.buffer();
-            return applyCompression(request, reply, buffer);
+            // Pass the response body stream to compress
+            return applyCompression(request, reply, response.body);
         } else {
-        reply.header('x-proxy-bypass', 1);
+            reply.header('x-proxy-bypass', 1);
 
-        ['accept-ranges', 'content-type', 'content-length', 'content-range'].forEach(headerName => {
-            if (headerName in response.headers) {
-                reply.header(headerName, response.headers[headerName]);
-            }
-        });
+            ['accept-ranges', 'content-type', 'content-length', 'content-range'].forEach(headerName => {
+                if (headerName in response.headers) {
+                    reply.header(headerName, response.headers[headerName]);
+                }
+            });
 
-        return response.body.pipe(reply.raw);
+            // Directly pipe the response body to the reply
+            response.body.pipe(reply.raw);
         }
     } catch (err) {
         return handleRedirect(request, reply);
