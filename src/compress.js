@@ -1,31 +1,38 @@
+"use strict";
+
 const sharp = require('sharp');
 const redirect = require('./redirect');
 
-async function compressImg(req, res, inputStream) {
+const sharpStream = () => sharp({ animated: !process.env.NO_ANIMATE, unlimited: true });
+
+function compress(req, res, input) {
     const format = req.params.webp ? 'webp' : 'jpeg';
 
-    // Set up the sharp instance with the desired options
-    inputStream.pipe(
-        sharp()
+    // Pipe the input body stream into the sharp instance
+    input.body.pipe(
+        sharpStream()
             .grayscale(req.params.grayscale)
             .toFormat(format, {
-                quality: req.params.quality,
+                quality: req.params.quality || 75, // Default quality to 75 if not provided
                 progressive: true,
-                optimizeScans: true
+                optimizeScans: true,
             })
-            .toBuffer((err, output, info) => {
-                if (err || !info || res.headersSent) {
-                    return redirect(req, res);
-                }
-
-                // Send the processed image
-                res.header('content-type', `image/${format}`);
-                res.header('content-length', info.size);
-                res.header('x-original-size', req.params.originSize);
-                res.header('x-bytes-saved', req.params.originSize - info.size);
-                res.status(200).send(output);
-            })
+            .toBuffer((err, output, info) => _sendResponse(err, output, info, format, req, res))
     );
 }
 
-module.exports = compressImg;
+function _sendResponse(err, output, info, format, req, res) {
+    if (err || !info) {
+        return redirect(req, res);
+    }
+
+    res.setHeader('content-type', `image/${format}`);
+    res.setHeader('content-length', info.size);
+    res.setHeader('x-original-size', req.params.originSize);
+    res.setHeader('x-bytes-saved', req.params.originSize - info.size);
+    res.status(200);
+    res.write(output);
+    res.end();
+}
+
+module.exports = compress;
