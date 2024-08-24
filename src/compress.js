@@ -5,28 +5,31 @@ const redirect = require('./redirect');
 
 const sharpStream = () => sharp({ animated: !process.env.NO_ANIMATE, unlimited: true });
 
-async function compress(request, reply) {
+async function compress(request, reply, inputStream) {
     const imgFormat = request.params.webp ? 'webp' : 'jpeg';
-    const input = request.raw; // Assuming `input` is obtained from the raw request
 
     try {
-        const outputBuffer = await sharpStream()
+        // Create a sharp instance with stream
+        const transformStream = sharpStream()
             .grayscale(request.params.grayscale)
             .toFormat(imgFormat, {
-                quality: request.params.quality || 75, // Default quality to 75 if not provided
+                quality: request.params.quality,
                 progressive: true,
                 optimizeScans: true,
-            })
-            .toBuffer();
+            });
 
-        // Setting response headers
+        // Set response headers before piping
         reply.header('content-type', `image/${imgFormat}`);
-        reply.header('content-length', outputBuffer.length);
         reply.header('x-original-size', request.params.originSize);
-        reply.header('x-bytes-saved', request.params.originSize - outputBuffer.length);
 
-        // Sending the processed image
-        reply.status(200).send(outputBuffer);
+        // Pipe the input stream through sharp and into the reply
+        inputStream.pipe(transformStream).pipe(reply.raw);
+
+        // To handle size and bytes-saved headers, use `transformStream` events
+        transformStream.on('info', info => {
+            reply.header('content-length', info.size);
+            reply.header('x-bytes-saved', request.params.originSize - info.size);
+        });
 
     } catch (error) {
         // Error handling
