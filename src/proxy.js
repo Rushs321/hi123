@@ -74,9 +74,15 @@ async function processRequest(request, reply) {
             const buffer = await response.buffer();
             return applyCompression(request, reply, buffer);
         } else {
-            // Directly pipe the response stream to the client
-            reply.header('content-length', request.params.originSize);
-            return response.body.pipe(reply.raw);
+        reply.header('x-proxy-bypass', 1);
+
+        ['accept-ranges', 'content-type', 'content-length', 'content-range'].forEach(headerName => {
+            if (headerName in response.headers) {
+                reply.header(headerName, response.headers[headerName]);
+            }
+        });
+
+        return response.body.pipe(reply.raw);
         }
     } catch (err) {
         return handleRedirect(request, reply);
