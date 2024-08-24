@@ -3,40 +3,42 @@
 const sharp = require('sharp');
 const redirect = require('./redirect');
 
-const sharpStream = (grayscale, format, quality) => 
-    sharp({ animated: !process.env.NO_ANIMATE, unlimited: true })
-        .grayscale(grayscale)
-        .toFormat(format, {
-            quality: quality,
-            progressive: true,
-            optimizeScans: true,
-        });
+const sharpStream = () => sharp({ animated: !process.env.NO_ANIMATE, unlimited: true });
 
 async function compress(request, reply) {
     const imgFormat = request.params.webp ? 'webp' : 'jpeg';
-    const { grayscale, quality, originSize } = request.params;
-
-    // Setting up the stream pipeline
-    const transformStream = sharpStream(grayscale, imgFormat, quality);
-
-    reply.type(`image/${imgFormat}`);
 
     try {
-        // Start piping the request body stream through the transform and to the response
-        request.raw.pipe(transformStream)
-            .on('info', (info) => {
-                reply.header('content-length', info.size);
-                reply.header('x-original-size', originSize);
-                reply.header('x-bytes-saved', originSize - info.size);
+        // Ensure request.body is available as a stream
+        const inputStream = request.body;
+
+        // Pipe the input body stream into the sharp instance
+        const outputBuffer = await sharpStream()
+            .grayscale(request.params.grayscale)
+            .toFormat(imgFormat, {
+                quality: request.params.quality,
+                progressive: true,
+                optimizeScans: true,
             })
-            .on('error', (error) => {
-                if (!reply.sent) {
-                    redirect(request, reply); // Handle errors by redirecting
-                }
-            })
-            .pipe(reply.raw); // Pipe the transformed data directly to the response
+            .toBuffer();
+
+        const info = await sharpStream()
+            .metadata(); // Retrieve metadata to get the size
+
+        if (!info || reply.sent) {
+            return redirect(request, reply);
+        }
+
+        // Setting response headers
+        reply
+            .header('Content-Type', `image/${imgFormat}`)
+            .header('Content-Length', info.size)
+            .header('X-Original-Size', request.params.originSize)
+            .header('X-Bytes-Saved', request.params.originSize - info.size)
+            .status(200)
+            .send(outputBuffer);
     } catch (error) {
-        redirect(request, reply); // Handle any synchronous errors
+        return redirect(request, reply);
     }
 }
 
