@@ -7,38 +7,30 @@ const sharpStream = () => sharp({ animated: !process.env.NO_ANIMATE, unlimited: 
 
 async function compress(request, reply) {
     const imgFormat = request.params.webp ? 'webp' : 'jpeg';
+    const input = request.raw; // Assuming `input` is obtained from the raw request
 
     try {
-        // Ensure request.body is available as a stream
-        const inputStream = request.body;
-
-        // Pipe the input body stream into the sharp instance
         const outputBuffer = await sharpStream()
             .grayscale(request.params.grayscale)
             .toFormat(imgFormat, {
-                quality: request.params.quality,
+                quality: request.params.quality || 75, // Default quality to 75 if not provided
                 progressive: true,
                 optimizeScans: true,
             })
             .toBuffer();
 
-        const info = await sharpStream()
-            .metadata(); // Retrieve metadata to get the size
-
-        if (!info || reply.sent) {
-            return redirect(request, reply);
-        }
-
         // Setting response headers
-        reply
-            .header('Content-Type', `image/${imgFormat}`)
-            .header('Content-Length', info.size)
-            .header('X-Original-Size', request.params.originSize)
-            .header('X-Bytes-Saved', request.params.originSize - info.size)
-            .status(200)
-            .send(outputBuffer);
+        reply.header('content-type', `image/${imgFormat}`);
+        reply.header('content-length', outputBuffer.length);
+        reply.header('x-original-size', request.params.originSize);
+        reply.header('x-bytes-saved', request.params.originSize - outputBuffer.length);
+
+        // Sending the processed image
+        reply.status(200).send(outputBuffer);
+
     } catch (error) {
-        return redirect(request, reply);
+        // Error handling
+        redirect(request, reply);
     }
 }
 
